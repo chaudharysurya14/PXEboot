@@ -1,0 +1,262 @@
+===========================================================================
+========== PXE Boot : Configure PXE Server ======================
+--------------------------------------------------------------------------
+https://www.server-world.info/en/note?os=CentOS_7&p=pxe&f=1		#we can reffer this site for PXE lab
+---------------------------------------------------------------
+yum -y install syslinux xinetd tftp-server
+vi /etc/dhcp/dhcpd.conf 										#Edit the file as same
+	# DHCP Server Configuration file.
+	#   see /usr/share/doc/dhcp*/dhcpd.conf.example
+	#   see dhcpd.conf(5) man page
+	option domain-name master;
+	default-lease-time 600;
+	max-lease-time 7200;
+
+	subnet 192.168.100.0 netmask 255.255.255.0 {
+        	range 192.168.100.101 192.168.100.120;
+        	option routers 192.168.100.7;
+	filename        "pxelinux.0";
+	next-server 192.168.100.7;
+	}
+
+
+dhcpd -t													#for find/show error
+journalctl -xe												#for find/show error
+systemctl restart dhcpd.service										#restart dhcp service
+yum install syslinux xinetd tftp-server								#install syslinux
+	*syslinux-boot by networking
+	*xineted-helps to connect to internet
+	*tftp-do file transfer by internet
+	
+yum install syslinux xinetd tftp-server 								#install syslinux server
+mkdir /var/lib/tftpboot/pxelinux.cfg								#create directory	
+cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot
+cp /usr/share/syslinux/menu.c32 /var/lib/tftpboot						#copy the file
+vi /etc/xinetd.d/tftp 
+	{
+        socket_type             = dgram
+        protocol                = udp
+        wait                    = yes
+        user                    = root
+        server                  = /usr/sbin/in.tftpd
+        server_args             = -s /var/lib/tftpboot
+        disable                 = no
+        per_source              = 11
+        cps                     = 100 2
+        flags                   = IPv4
+	}
+
+systemctl start xinetd											#start xinetd service 
+systemctl enable xinetd											#enable xinetd service
+systemctl status xinetd											#check status of xinetd service
+mkdir -p /var/pxe/centos7										# create a directory
+mkdir -p /var/lib/tftpboot/centos7									# creat ea directory
+mount -t auto -o loop /dev/cdrom /var/pxe/centos7 or mount -t iso9660 -o loop /dev/cdrom /var/pxe/centos7	#mount 
+ll /var/pxe/centos											#check mounted file
+cp /var/pxe/centos/images/pxeboot/initrd.img /var/lib/tftpboot/centos7/			# copy this file
+cp /var/pxe/centos/images/pxeboot/vmlinuz /var/lib/tftpboot/centos7/			# copy this file
+ll /var/lib/tftpboot/centos7/										#check file
+	-rw-r--r--. 1 root root 55129656 Dec 22 18:21 initrd.img
+	-rwxr-xr-x. 1 root root  6769256 Dec 22 18:21 vmlinuz
+vi /var/lib/tftpboot/pxelinux.cfg/default								#edit as same
+	# creating PXE definition
+
+	timeout 100
+	default menu.c32
+	menu title ########## PXE BOOT MENU ##########
+	label 1
+      	menu label ^1) Install centos 7
+        	kernal centos7/vmlinuz
+        	append initrd=centos7/initrd.img method=http://192.168.100.7/centos7 devfs=nomount
+
+	label 2
+      	menu label ^2) Boot from locall drive
+     		localboot
+
+yum install httpd												#install httpd service
+systemctl start httpd											
+systemctl enable httpd
+systemctl status httpd
+vi /etc/httpd/conf.d/pxeboot.conf									#edit file as given below
+	Alias /centos7 /var/pxe/centos7
+	<Directory /var/pxe/centos7>
+     	 	  options Indexes FollowSymlinks
+	#Ip address we want to allow
+	        require ip 127.0.0.1 192.168.100.0/24
+	</Directory>
+
+
+ll /var/lib/tftpboot/											# check file 
+	drwxr-xr-x. 2 root root    39 Dec 22 18:21 centos7
+	-rw-r--r--. 1 root root 55140 Dec 22 21:02 menu.c32
+	-rw-r--r--. 1 root root 26759 Dec 22 20:58 pxelinux.0
+	drwxr-xr-x. 2 root root    21 Dec 22 20:14 pxelinux.cfg
+
+ll /var/lib/tftpboot/centos7/										# check file
+	CentOS_BuildTag  GPL       LiveOS    RPM-GPG-KEY-CentOS-7
+	EFI              images    Packages  RPM-GPG-KEY-CentOS-Testing-7
+	EULA             isolinux  repodata  TRANS.TBL
+
+ll /var/lib/tftpboot/pxelinux.cfg/									# check file
+	total 4
+	-rw-r--r--. 1 root root 311 Dec 22 22:06 default
+
+ls /var/pxe/centos7/											#check file
+	CentOS_BuildTag  GPL       LiveOS    RPM-GPG-KEY-CentOS-7
+	EFI              images    Packages  RPM-GPG-KEY-CentOS-Testing-7
+	EULA             isolinux  repodata  TRANS.TBL
+
+httpd -t													# check httpd configurationn ok or not
+	AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 192.168.112.132. Set the 'ServerName' directive globally to suppress this message
+	Syntax OK
+
+
+systemctl restart httpd
+systemctl status httpd-on
+systemctl stop firewalld
+systemctl status firewalld-off
+systemctl start dhcpd
+systemctl status dhcpd-on
+systemctl start xinetd
+systemctl start tftp
+systemctl status tftp-on
+
+[root@dlp ~]# python -c 'import crypt,getpass; \						#create password
+print(crypt.crypt(getpass.getpass(), \
+crypt.mksalt(crypt.METHOD_SHA512)))'
+
+password:0000												#enter password manually
+
+$6$EC1T.oKN5f3seb20$y1WlMQ7Ih424OwOn.....								#key created like this
+
+mkdir /var/www/html/ks											#create dir
+vi /var/www/html/ks/centos7-ks.cfg									#edit this file as bellow
+	# create new
+	install
+	# automatically proceed for each steps
+	autostep
+	# reboot after installing
+	reboot
+	# encrypt algorithm
+	auth --enableshadow --passalgo=sha512
+	# installation source
+	url --url=http://192.168.100.7/centos7/
+	# install disk
+	ignoredisk --only-use=sda
+	# keyboard layouts
+	keyboard --vckeymap=jp106 --xlayouts='jp','us'
+	# system locale
+	lang en_US.UTF-8
+	# network settings
+	network --bootproto=dhcp --ipv6=auto --activate --hostname=localhost				#auto detect network
+	or
+	network --bootproto=static --ipv4=192.168.100.7 --activate --hostname=localhost		#manual configgure ip-address
+
+	# root password you generated above
+	rootpw --iscrypted $6$EC1T.oKN5f3seb20$y1WlMQ7Ih424OwOn.....
+	# timezone
+	timezone America/New_Yourk --isUtc
+	# bootloader's settings
+	bootloader --location=mbr --boot-drive=sda
+	# initialize all partition tables
+	zerombr
+	clearpart --all --initlabel
+	# partitioning
+	part /boot --fstype="xfs" --ondisk=sda --size=500
+	part pv.10 --fstype="lvmpv" --ondisk=sda --size=51200
+	volgroup VolGroup --pesize=4096 pv.10
+	logvol / --fstype="xfs" --size=20480 --name=root --vgname=VolGroup
+	logvol swap --fstype="swap" --size=4096 --name=swap --vgname=VolGroup
+	'or'
+	autopart --type=lvm
+
+	%packages
+	@core
+	%end
+
+chmod 644 /var/www/html/ks/centos7-ks.cfg										# Give permission
+vi /var/lib/tftpboot/pxelinux.cfg/default										#edit file as bellow
+	# creating PXE definition
+
+	timeout 100
+	default menu.c32
+	menu title ########## PXE BOOT MENU ##########
+	label 1
+      	menu label ^1) Install centos 7
+        	kernal centos7/vmlinuz
+        	append initrd=centos7/initrd.img ks=http://192.168.100.7/ks/centos7-ks.cfg
+
+	label 2
+      	menu label ^2) Boot from locall drive
+     		localboot
+
+mkdir -p /var/lib/tftpboot/centos7/root										# create directory
+yum groups install "Server with GUI" --releasever=7 --installroot=/var/lib/tftpboot/centos7/root/ 	#install files
+
+python -c 'import crypt,getpass; \											# generate a password
+print(crypt.crypt(getpass.getpass(), \
+crypt.mksalt(crypt.METHOD_SHA512)))'
+	password:
+	$6$EC1T.oKN5f3seb20$y1WlMQ7Ih424OwOn.....									#automatically generated key while create password
+
+vi /var/lib/tftpboot/centos7/root/etc/shadow									# Edit as same	
+	root:$6$EC1T.oKN5f3seb20$y1WlMQ7Ih424OwOn.....:16372:0:99999:7:::
+
+vi /var/lib/tftpboot/centos7/root/etc/fstab									# check is like below or not
+	none    /tmp        tmpfs   defaults   0 0
+	tmpfs   /dev/shm    tmpfs   defaults   0 0
+	sysfs   /sys        sysfs   defaults   0 0
+	proc    /proc       proc    defaults   0 0
+
+wget -P /var/lib/tftpboot/centos7/ \										#install both file at a time
+http://mirror.centos.org/centos/7/os/x86_64/images/pxeboot/vmlinuz \
+http://mirror.centos.org/centos/7/os/x86_64/images/pxeboot/initrd.img
+
+vi /var/lib/tftpboot/pxelinux.cfg/default
+	# creating PXE definition
+
+	timeout 100
+	default menu.c32
+	menu title ########## PXE BOOT MENU ##########
+	label 1
+      	menu label ^1) Install centos 7
+        	kernal centos7/vmlinuz
+        	append initrd=centos7/initrd.img method=http://192.168.100.7/centos7 devfs=nomount
+
+	label 2
+      	menu label ^2) Boot from locall drive
+     		localboot
+	# create new
+	default centos7
+
+	label centos7
+	    kernel centos7/vmlinuz
+	    append initrd=centos7/initrd.img root=nfs:10.0.0.30:/var/lib/tftpboot/centos7/root rw selinux=0 
+
+vi /etc/exports
+	/var/lib/tftpboot/centos7/root 192.168.100.7/24(rw,no_root_squash)
+
+systemctl start rpcbind nfs-server
+systemctl enable rpcbind nfs-server
+systemctl restart httpd
+systemctl status httpd-on
+systemctl stop firewalld
+systemctl status firewalld-off
+systemctl start dhcpd
+systemctl status dhcpd-on
+systemctl start xinetd
+systemctl start tftp
+systemctl status tftp-on
+
+
+=>create a vmware using host only network as master and click start
+
+
+
+
+
+
+
+
+*umount -l /'path'/filename   									#for unmount
+
